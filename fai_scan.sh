@@ -2,6 +2,8 @@
 #
 #   Copyright ® Juniper Networks, Inc. 2021. All rights reserved.
 #
+# Version 1.6
+#  -- collect the /var/log/messages file
 # Version 1.5
 #  -- added lspci -vvvv
 #  -- fixed finding cdc-wdm
@@ -89,6 +91,7 @@
 #     “-auxwww –forest” -  Get current process tree (forest)
 #     Check if the system is booted legacy or uEFI and grub information
 #     Obtain 128T ISO used to image the system was (if available)
+#     Obtain the /var/log/messages file
 #      
 #  Full mode (additional commands run beyond above, "full" option):
 #     rpm -qa -V – gets the list of rpms from the system and performs a
@@ -498,6 +501,10 @@ if [ -d /var/log/128T-iso ] ; then
     ${ECHO_CMD} "--- Collected ISO install logs from /var/log/128T-iso ---" >> ${summary_report_file}
 else
     ${ECHO_CMD} "--- ISO install logs NOT FOUND ---" >> ${summary_report_file}
+fi
+
+if [ -f /var/log/messages ] ; then
+    ${CP_CMD} -p /var/log/messages ${base_scan_dir}
 fi
 
 ## This section is the new Summary output that will also be added to the Summary report file
