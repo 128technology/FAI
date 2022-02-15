@@ -2,6 +2,14 @@
 #
 #   Copyright ® Juniper Networks, Inc. 2021. All rights reserved.
 #
+# Version 1.7
+#  -- collect SSR installation logs
+#  -- Collect yum and dnf logs
+#  -- Insulated the /usr/bin/tee command
+#  -- added echo information to summary report file
+#  -- added eeprom validation
+#  -- added "nn" to lspci command for vendor ID information
+#  -- Changed 128T non specific text references to SSR
 # Version 1.6
 #  -- collect the /var/log/messages file
 # Version 1.5
@@ -60,7 +68,7 @@
 # Version 0.2
 #  -- Added disk information
 # Version 0.1
-#  -- initial script provided to 128T Partner
+#  -- initial script provided to SSR Partner
 
 ##
 #   Details of what this script does:
@@ -92,6 +100,8 @@
 #     Check if the system is booted legacy or uEFI and grub information
 #     Obtain 128T ISO used to image the system was (if available)
 #     Obtain the /var/log/messages file
+#     Obtain the install, dnf and yum logs if they exist
+#     Check if jnpr eeprom exists
 #      
 #  Full mode (additional commands run beyond above, "full" option):
 #     rpm -qa -V – gets the list of rpms from the system and performs a
@@ -148,6 +158,7 @@ RPM_CMD="${USR_BIN}/rpm"
 SORT_CMD="${USR_BIN}/sort"
 SYSTEMCTL_CMD="${USR_BIN}/systemctl"
 TAR_CMD="${USR_BIN}/tar"
+TEE_CMD="${USR_BIN}/tee"
 TOUCH_CMD="${USR_BIN}/touch"
 YUM_CMD="${USR_BIN}/yum"
 HOSTNAME_CMD="${USR_BIN}/hostname"
@@ -161,6 +172,9 @@ LSHW_CMD="${USR_SBIN}/lshw"
 LSPCI_CMD="${USR_SBIN}/lspci"
 LSMOD_CMD="${USR_SBIN}/lsmod"
 SMARTCTL_CMD="${USR_SBIN}/smartctl"
+I2CDETECT_CMD="${USR_SBIN}/i2cdetect"
+
+EEPROM_VALIDATE_CMD="/usr/libexec/hardwareBootstrapper128t"
 
 ## Local functions
 ## usage should match parsing section below
@@ -295,58 +309,58 @@ fi
 
 ## Set summary report file and include command line options in this file
 summary_report_file="${base_scan_dir}/Summary-report.txt"
-${ECHO_CMD} " Running with ${cmd_line_args} " | tee ${summary_report_file}
+${ECHO_CMD} " Running with ${cmd_line_args} " | ${TEE_CMD} ${summary_report_file}
 
 # commands to run
 ${ECHO_CMD} " Collecting FAI command information ..."
-${ECHO_CMD} "running ${DMIDECODE_CMD}"
+${ECHO_CMD} "running ${DMIDECODE_CMD}" | ${TEE_CMD} -a ${summary_report_file}
 ${DMIDECODE_CMD} > ${base_scan_dir}/dmidecode-output.txt
 
-${ECHO_CMD} "running ${LSHW_CMD}"
+${ECHO_CMD} "running ${LSHW_CMD}" | ${TEE_CMD} -a ${summary_report_file}
 ${LSHW_CMD} > ${base_scan_dir}/lshw-output.txt
 
-${ECHO_CMD} "running ${LSPCI_CMD}"
-${LSPCI_CMD} -vvvv > ${base_scan_dir}/lspci-vvvv-output.txt
+${ECHO_CMD} "running ${LSPCI_CMD}" | ${TEE_CMD} -a ${summary_report_file}
+${LSPCI_CMD} -nnvvvv > ${base_scan_dir}/lspci-vvvv-output.txt
 
-${ECHO_CMD} "running ${LSMOD_CMD}"
+${ECHO_CMD} "running ${LSMOD_CMD}" | ${TEE_CMD} -a ${summary_report_file}
 ${LSMOD_CMD} > ${base_scan_dir}/lsmod-output.txt
 
-${ECHO_CMD} "running ip a"
+${ECHO_CMD} "running ip a" | ${TEE_CMD} -a ${summary_report_file}
 ${IP_CMD} a > ${base_scan_dir}/ip_a-output.txt
 
-${ECHO_CMD} "Collecting dpdk-devbind output"
+${ECHO_CMD} "Collecting dpdk-devbind output" | ${TEE_CMD} -a ${summary_report_file}
 dpdk-devbind.py --status dev >> ${base_scan_dir}/dpdk-devbind.txt
 
-${ECHO_CMD} "Collect Misc system information"
+${ECHO_CMD} "Collect Misc system information" | ${TEE_CMD} -a ${summary_report_file}
 ${LSCPU_CMD} > ${base_scan_dir}/lscpu-free-info.txt
 ${FREE_CMD} >> ${base_scan_dir}/lscpu-free-info.txt
 
-${ECHO_CMD} "Collecting disk information"
+${ECHO_CMD} "Collecting disk information" | ${TEE_CMD} -a ${summary_report_file}
 ${LSBLK_CMD} > ${base_scan_dir}/disk-info-output.txt
 ${FDISK_CMD} -l >> ${base_scan_dir}/disk-info-output.txt
 
-${ECHO_CMD} "running ${SYSTEMCTL_CMD} list-unit-files"
+${ECHO_CMD} "running ${SYSTEMCTL_CMD} list-unit-files" | ${TEE_CMD} -a ${summary_report_file}
 ${SYSTEMCTL_CMD} list-unit-files > ${base_scan_dir}/systemctl_list-unit-files-output.txt
 
-${ECHO_CMD} "collecting history"
+${ECHO_CMD} "collecting history" | ${TEE_CMD} -a ${summary_report_file}
 ${CP_CMD} -p /root/.bash_history ${base_scan_dir}/history-output.txt
 
-${ECHO_CMD} "collecting network configuration files information"
+${ECHO_CMD} "collecting network configuration files information" | ${TEE_CMD} -a ${summary_report_file}
 ${CP_CMD} -p /etc/chrony.conf ${base_scan_dir}/chrony.conf
 ${CP_CMD} -p /etc/sysconfig/network ${base_scan_dir}/network
 ${CP_CMD} -p /etc/sysconfig/network-scripts/ifcfg-* ${base_scan_dir}/
 
-${ECHO_CMD} "collecting 128T specific files"
+${ECHO_CMD} "collecting SSR specific files" | ${TEE_CMD} -a ${summary_report_file}
 ${CP_CMD} -p /etc/128technology/global.init ${base_scan_dir}/
 ${CP_CMD} -p /etc/128technology/local.init ${base_scan_dir}/
 
-${ECHO_CMD} "collecting hostname information"
+${ECHO_CMD} "collecting hostname information" | ${TEE_CMD} -a ${summary_report_file}
 ${CP_CMD} -p /etc/hostname ${base_scan_dir}/
 
-${ECHO_CMD} "collecting last information"
+${ECHO_CMD} "collecting last information" | ${TEE_CMD} -a ${summary_report_file}
 ${LAST_CMD} >> ${base_scan_dir}/last-cmd.txt
 
-${ECHO_CMD} "Getting ${SMARTCTL_CMD} information"
+${ECHO_CMD} "Getting ${SMARTCTL_CMD} information" | ${TEE_CMD} -a ${summary_report_file}
 ${ECHO_CMD} "=== ${SMARTCTL_CMD} -d sat information ==" >> ${base_scan_dir}/disk-smartctl.txt
 ${SMARTCTL_CMD} --scan -d sat >> ${base_scan_dir}/disk-smartctl.txt
 ${ECHO_CMD} "=== ${SMARTCTL_CMD} -d nvme information ==" >> ${base_scan_dir}/disk-smartctl.txt
@@ -360,43 +374,45 @@ do
     ${SMARTCTL_CMD} --xall ${i} >> ${base_scan_dir}/disk-smartctl.txt
 done
 
-${ECHO_CMD} "Getting Huge page information"
+${ECHO_CMD} "Getting Huge page information" | ${TEE_CMD} -a ${summary_report_file}
 ${GREP_CMD} -r "hugepages=" /boot >> ${base_scan_dir}/hugepage-boot-info.txt
 ${GREP_CMD} HugePages_ /proc/meminfo >> ${base_scan_dir}/hugepage-boot-info.txt
 
 if [ -c /dev/cdc-wdm0 ] ; then
-  ${ECHO_CMD} " obtaining ${QMICLI_CMD} information" | tee -a ${base_scan_dir}/qmicli-output.txt
+  ${ECHO_CMD} "Collecting LTE/QMI Information" | ${TEE_CMD} -a ${summary_report_file}
+  ${ECHO_CMD} " obtaining ${QMICLI_CMD} information" | ${TEE_CMD} -a ${base_scan_dir}/qmicli-output.txt
   for i in ${qmicli_cmd_list}
   do
-    ${ECHO_CMD} " --${i}" | tee -a ${base_scan_dir}/qmicli-output.txt
+    ${ECHO_CMD} " --${i}" | ${TEE_CMD} -a ${base_scan_dir}/qmicli-output.txt
     ${QMICLI_CMD} -d /dev/cdc-wdm0 --${i} >> ${base_scan_dir}/qmicli-output.txt
     ${ECHO_CMD} "------ END ${i}" >> ${base_scan_dir}/qmicli-output.txt
   done
 fi
 
 if [ -c /dev/cdc-wdm1 ] ; then
-  ${ECHO_CMD} " obtaining ${QMICLI_CMD} information" | tee -a ${base_scan_dir}/qmicli-output.txt
+  ${ECHO_CMD} "Collecting 2nd LTE/QMI Information" | ${TEE_CMD} -a ${summary_report_file}
+  ${ECHO_CMD} " obtaining ${QMICLI_CMD} information" | ${TEE_CMD} -a ${base_scan_dir}/qmicli-output.txt
   for i in ${qmicli_cmd_list}
   do
-    ${ECHO_CMD} " --${i}" | tee -a ${base_scan_dir}/qmicli-output.txt
+    ${ECHO_CMD} " --${i}" | ${TEE_CMD} -a ${base_scan_dir}/qmicli-output.txt
     ${QMICLI_CMD} -d /dev/cdc-wdm1 --${i} >> ${base_scan_dir}/qmicli-output.txt
   done
 fi
 
-${ECHO_CMD} "running ${RPM_CMD} -qa ${SORT_CMD}"
+${ECHO_CMD} "running ${RPM_CMD} -qa ${SORT_CMD}" | ${TEE_CMD} -a ${summary_report_file}
 ${RPM_CMD} -qa | ${SORT_CMD} >> ${base_scan_dir}/rpm_-qa_sort-output.txt
 
 
-${ECHO_CMD} "listing ${repo_saved_location} location"
+${ECHO_CMD} "listing ${repo_saved_location} location" | ${TEE_CMD} -a ${summary_report_file}
 ${LS_CMD} -v ${repo_saved_location} >> ${base_scan_dir}/repo_saved_location.txt
 
-${ECHO_CMD} "Getting core and kernel crash history"
+${ECHO_CMD} "Getting core and kernel crash history" | ${TEE_CMD} -a ${summary_report_file}
 ${ECHO_CMD} "=== core listing" >> ${base_scan_dir}/coredumpctl-list.txt
 ${COREDUMPCTL_CMD} >> ${base_scan_dir}/coredumpctl-list.txt
 ${ECHO_CMD} "=== kernel crash listing" >> ${base_scan_dir}/coredumpctl-list.txt
 ${LS_CMD} -lrta /var/crash/ >> ${base_scan_dir}/coredumpctl-list.txt
 
-${ECHO_CMD} "Getting grubby and boot information from system"
+${ECHO_CMD} "Getting grubby and boot information from system" | ${TEE_CMD} -a ${summary_report_file}
 ${ECHO_CMD} "=== grubby default-kernel" >> ${base_scan_dir}/grubby-info.txt
 ${GRUBBY_CMD} --default-kernel  >> ${base_scan_dir}/grubby-info.txt
 ${ECHO_CMD} "=== grubby default-index" >> ${base_scan_dir}/grubby-info.txt
@@ -404,7 +420,7 @@ ${GRUBBY_CMD} --default-index  >> ${base_scan_dir}/grubby-info.txt
 ${ECHO_CMD} "=== grubby info=ALL"  >> ${base_scan_dir}/grubby-info.txt
 ${GRUBBY_CMD} --info=ALL  >> ${base_scan_dir}/grubby-info.txt
 
-${ECHO_CMD} "Getting boot partition information"
+${ECHO_CMD} "Getting boot partition information" | ${TEE_CMD} -a ${summary_report_file}
 ${ECHO_CMD} "=== find /boot -ls" >> ${base_scan_dir}/boot-partition-information.txt
 ${FIND_CMD} /boot -ls >> ${base_scan_dir}/boot-partition-information.txt
 ${ECHO_CMD} "Getting /boot/grub2/grubenv"
@@ -412,15 +428,16 @@ ${MKDIR_CMD} ${base_scan_dir}/boot
 ${CP_CMD} -p /boot/grub2/grubenv ${base_scan_dir}/boot/grub2-grubenv
 
 ## Get process tree
+${ECHO_CMD} "Collecting process tree information" | ${TEE_CMD} -a ${summary_report_file}
 ${ECHO_CMD} " --- ${PS_CMD} -auxwww --forest" >> ${base_scan_dir}/process-list-tree.txt
 ${PS_CMD} -auxwww --forest >> ${base_scan_dir}/process-list-tree.txt
 
-${ECHO_CMD} "Obtaining minimal journal information"
+${ECHO_CMD} "Obtaining minimal journal information" | ${TEE_CMD} -a ${summary_report_file}
 ${ECHO_CMD} "==== List Boots ===" > ${base_scan_dir}/journalctl-output.txt
 ${JOURNALCTL_CMD} --list-boots >> ${base_scan_dir}/journalctl-output.txt
 
 # Scan initial and ending boot entries from journalctl
-${ECHO_CMD} "scanning journal information"
+${ECHO_CMD} "scanning journal information" | ${TEE_CMD} -a ${summary_report_file}
 while [[ "${boot_scan_count}" -gt -1 ]] ; do
     echo "======= boot head count = ${boot_scan_count} ======" >> ${base_scan_dir}/boot-scan-count-journalctl-output.txt
     journalctl -b -${boot_scan_count} | head -${boot_scan_line_count} >> ${base_scan_dir}/boot-scan-count-journalctl-output.txt
@@ -431,28 +448,29 @@ done
 
 ## Non summary information here
 if [ "${run_mode}" == "full" ] ; then 
-  ${ECHO_CMD} "RUNNING IN FULL MODE"
-  ${ECHO_CMD} "running ${RPM_CMD} -qa -V"
+  ${ECHO_CMD} "RUNNING IN FULL MODE" | ${TEE_CMD} -a ${summary_report_file}
+  ${ECHO_CMD} "running ${RPM_CMD} -qa -V" | ${TEE_CMD} -a ${summary_report_file}
   for i in `${RPM_CMD} -qa | ${SORT_CMD}` 
   do
     ${ECHO_CMD} " --- ${i}" >> ${base_scan_dir}/rpm_-qa_-V-output.txt
     ${RPM_CMD} -V ${i} >> ${base_scan_dir}/rpm_-qa_-V-output.txt
   done
 
-  ${ECHO_CMD} "running journctl"
+  ${ECHO_CMD} "running journctl" | ${TEE_CMD} -a ${summary_report_file}
   ${ECHO_CMD} "==== List dmesg ===" >> ${base_scan_dir}/journalctl-output.txt
   ${JOURNALCTL_CMD} --dmesg >> ${base_scan_dir}/journalctl-output.txt
   ${ECHO_CMD} "==== List lines ${journalctl_line_count} ===" >> ${base_scan_dir}/journalctl-output.txt
   ${JOURNALCTL_CMD} -a --lines=${journalctl_line_count} >> ${base_scan_dir}/journalctl-output.txt
 
-  ${ECHO_CMD} "=== running ${DNF_CMD} history count ${dnf_yum_history_count}" | tee -a ${base_scan_dir}/dnf_history_info-output.txt
+  ${ECHO_CMD} "Collecting dnf and yum history information" | ${TEE_CMD} -a ${summary_report_file}
+  ${ECHO_CMD} "=== running ${DNF_CMD} history count ${dnf_yum_history_count}" | ${TEE_CMD} -a ${base_scan_dir}/dnf_history_info-output.txt
   for i in `${DNF_CMD} history | ${GREP_CMD} -vE 'ID|\-\-\-\-|history' | awk '{print $1}' | head -${dnf_yum_history_count}`
   do 
     ${ECHO_CMD} " --- ${DNF_CMD} history info $i" >> ${base_scan_dir}/dnf_history_info-output.txt
     ${DNF_CMD} history info $i >>${base_scan_dir}/dnf_history_info-output.txt
   done
 
-  ${ECHO_CMD} "=== running ${YUM_CMD} history count ${dnf_yum_history_count}" | tee -a  ${base_scan_dir}/yum_history_info-output.txt
+  ${ECHO_CMD} "=== running ${YUM_CMD} history count ${dnf_yum_history_count}" | ${TEE_CMD} -a  ${base_scan_dir}/yum_history_info-output.txt
   for i in `${YUM_CMD} history list all | ${GREP_CMD} -vE 'ID|\-\-\-\-|history|Loaded' | awk '{print $1}' | head -${dnf_yum_history_count}`
   do
     ${ECHO_CMD} " --- ${YUM_CMD} history info $i" >> ${base_scan_dir}/yum_history_info-output.txt
@@ -461,7 +479,44 @@ if [ "${run_mode}" == "full" ] ; then
 
 fi
 
-${ECHO_CMD} "===== Summary report being generated ======="
+## Collect install, dnf and yum logs
+${ECHO_CMD} "Collecting install, dnf and yum logs" | ${TEE_CMD} -a ${summary_report_file}
+${TAR_CMD} cvfz ${base_scan_dir}/install_dnf_yum_logs.tgz /var/log/install128t /var/log/dnf* /var/log/yum*
+
+## Check if i2c eeprom is present
+${ECHO_CMD} "Checking for i2c EEPROM" | ${TEE_CMD} -a ${summary_report_file}
+if [ -x ${I2CDETECT_CMD} ] ; then
+    ## Check for the bus and log, else print not found message and move on
+    ${ECHO_CMD} "==== i2c bus number ===="
+    ${I2CDETECT_CMD} -l | ${GREP_CMD} -i i801 >> ${base_scan_dir}/eeprom-detection.txt
+    if [ $? -eq 0 ] ; then
+        ## Get SKU and SN from smidecode table and store to the eeprom text file
+        serial_number=`${DMIDECODE_CMD} | ${GREP_CMD} -A8 "^System Information" | ${GREP_CMD} "Serial Number:" | ${GAWK_CMD} '{print $3}'`
+        sku_number=`${DMIDECODE_CMD} | ${GREP_CMD} -A8 "^System Information" | ${GREP_CMD} "SKU Number:" | ${GAWK_CMD} '{print $3}'`
+        ${ECHO_CMD} "====SN ${serial_number} and SKU ${sku_number} for system ===="
+        ${ECHO_CMD} "SN: ${serial_number} and SKU: ${sku_number} " >> ${base_scan_dir}/eeprom-detection.txt
+        ${ECHO_CMD} "====EEPROM Validation ====" | ${TEE_CMD} -a ${base_scan_dir}/eeprom-detection.txt
+        ${EEPROM_VALIDATE_CMD} validate --sku ${sku_number} --serial ${serial_number} | ${TEE_CMD} -a ${base_scan_dir}/eeprom-detection.txt
+        if [ $? -eq 1 ] ; then
+            ${EEPROM_VALIDATE_CMD} validate --sku ${sku_number} --serial ${serial_number} 2>&1 | ${TEE_CMD} -a ${base_scan_dir}/eeprom-detection.txt
+            ${ECHO_CMD} " EEPROM validation FAILED!!! " >> ${base_scan_dir}/eeprom-detection.txt
+            ${ECHO_CMD} " ************************************* " >> ${summary_report_file}
+            ${ECHO_CMD} " **** EEPROM validation FAILED!!! **** " >> ${summary_report_file}
+            ${ECHO_CMD} " ************************************* " >> ${summary_report_file}
+        else
+            ${ECHO_CMD} " EEPROM validation PASSED!!! " >> ${base_scan_dir}/eeprom-detection.txt
+            ${ECHO_CMD} " ************************************* " >> ${summary_report_file}
+            ${ECHO_CMD} " **** EEPROM validation PASSED!!! **** " >> ${summary_report_file}
+            ${ECHO_CMD} " ************************************* " >> ${summary_report_file}
+        fi
+    else 
+        ${ECHO_CMD} "No eeprom detected" >> ${base_scan_dir}/eeprom-detection.txt
+    fi
+else
+    ${ECHO_CMD} "No i2c tools present" >> ${base_scan_dir}/eeprom-detection.txt
+fi
+
+${ECHO_CMD} "===== Summary report being generated =======" | ${TEE_CMD} -a ${summary_report_file}
 ${ECHO_CMD} ""
 ${ECHO_CMD} "--- CPU, Model and Memory from lscpu" >> ${summary_report_file}
 ${GREP_CMD} -E "(CPU\(s\):|Thread\(s\) per core:|Core\(s\) per socket:|Model name:|Mem:)" ${base_scan_dir}/lscpu-free-info.txt >> ${summary_report_file}
@@ -489,14 +544,14 @@ else
 fi
 ${ECHO_CMD} "" >> ${summary_report_file}
 if [ -f /etc/128technology/version-info/128T-ISO-release ] ; then
-    ${ECHO_CMD} "--- 128T ISO version information '`cat /etc/128technology/version-info/128T-ISO-release`'" >> ${summary_report_file}
+    ${ECHO_CMD} "--- SSR ISO version information '`cat /etc/128technology/version-info/128T-ISO-release`'" >> ${summary_report_file}
 else
-    ${ECHO_CMD} "--- 128T ISO version NOT FOUND" >> ${summary_report_file}
+    ${ECHO_CMD} "--- SSR ISO version NOT FOUND" >> ${summary_report_file}
 fi
 
 if [ -d /var/log/128T-iso ] ; then
     pushd /var/log/
-    tar cfp - 128T-iso | ( cd ${base_scan_dir} ; tar xfpB -)
+    ${TAR_CMD} cfp - 128T-iso | ( cd ${base_scan_dir} ; ${TAR_CMD} xfpB -)
     popd
     ${ECHO_CMD} "--- Collected ISO install logs from /var/log/128T-iso ---" >> ${summary_report_file}
 else
@@ -506,6 +561,7 @@ fi
 if [ -f /var/log/messages ] ; then
     ${CP_CMD} -p /var/log/messages ${base_scan_dir}
 fi
+
 
 ## This section is the new Summary output that will also be added to the Summary report file
 ### Disk check (Need to convert to the variablized cmd args)
@@ -531,5 +587,5 @@ ${RM_CMD} -rf ${base_scan_dir}
 
 ${ECHO_CMD} "****** FAI Scan complete ********"
 ${ECHO_CMD} ""
-${ECHO_CMD} " Please provide the archive file: ${tar_archive_name} to the 128T team for review"
+${ECHO_CMD} " Please provide the archive file: ${tar_archive_name} to the SSR team for review"
 
