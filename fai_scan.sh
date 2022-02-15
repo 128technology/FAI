@@ -484,8 +484,8 @@ ${ECHO_CMD} "Collecting install, dnf and yum logs" | ${TEE_CMD} -a ${summary_rep
 ${TAR_CMD} cvfz ${base_scan_dir}/install_dnf_yum_logs.tgz /var/log/install128t /var/log/dnf* /var/log/yum*
 
 ## Check if i2c eeprom is present
-${ECHO_CMD} "Checking for i2c EEPROM" | ${TEE_CMD} -a ${summary_report_file}
-if [ -x ${I2CDETECT_CMD} ] ; then
+if [ -x ${I2CDETECT_CMD} -a -x ${EEPROM_VALIDATE_CMD} ] ; then
+    ${ECHO_CMD} "Checking for i2c EEPROM" | ${TEE_CMD} -a ${summary_report_file}
     ## Check for the bus and log, else print not found message and move on
     ${ECHO_CMD} "==== i2c bus number ===="
     ${I2CDETECT_CMD} -l | ${GREP_CMD} -i i801 >> ${base_scan_dir}/eeprom-detection.txt
@@ -496,7 +496,9 @@ if [ -x ${I2CDETECT_CMD} ] ; then
         ${ECHO_CMD} "====SN ${serial_number} and SKU ${sku_number} for system ===="
         ${ECHO_CMD} "SN: ${serial_number} and SKU: ${sku_number} " >> ${base_scan_dir}/eeprom-detection.txt
         ${ECHO_CMD} "====EEPROM Validation ====" | ${TEE_CMD} -a ${base_scan_dir}/eeprom-detection.txt
+        ## Running twice because the return code for tee will be a pass
         ${EEPROM_VALIDATE_CMD} validate --sku ${sku_number} --serial ${serial_number} | ${TEE_CMD} -a ${base_scan_dir}/eeprom-detection.txt
+        ${EEPROM_VALIDATE_CMD} validate --sku ${sku_number} --serial ${serial_number}
         if [ $? -eq 1 ] ; then
             ${EEPROM_VALIDATE_CMD} validate --sku ${sku_number} --serial ${serial_number} 2>&1 | ${TEE_CMD} -a ${base_scan_dir}/eeprom-detection.txt
             ${ECHO_CMD} " EEPROM validation FAILED!!! " >> ${base_scan_dir}/eeprom-detection.txt
@@ -513,7 +515,7 @@ if [ -x ${I2CDETECT_CMD} ] ; then
         ${ECHO_CMD} "No eeprom detected" >> ${base_scan_dir}/eeprom-detection.txt
     fi
 else
-    ${ECHO_CMD} "No i2c tools present" >> ${base_scan_dir}/eeprom-detection.txt
+    ${ECHO_CMD} "EEPROM validation tools missing, check not performed" | ${TEE_CMD} -a ${base_scan_dir}/eeprom-detection.txt >> ${summary_report_file}
 fi
 
 ${ECHO_CMD} "===== Summary report being generated =======" | ${TEE_CMD} -a ${summary_report_file}
