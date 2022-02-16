@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-#   Copyright ® Juniper Networks, Inc. 2021. All rights reserved.
+#   Copyright ® Juniper Networks, Inc. 2021, 2022. All rights reserved.
 #
 # Version 1.7
 #  -- collect SSR installation logs
