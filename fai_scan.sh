@@ -2,6 +2,9 @@
 #
 #   Copyright ® Juniper Networks, Inc. 2021, 2022. All rights reserved.
 #
+# Version 1.8
+#  -- change archiver to zip from tar
+#  -- check for qmi mode vs. mbim mode
 # Version 1.7
 #  -- collect SSR installation logs
 #  -- Collect yum and dnf logs
@@ -162,6 +165,7 @@ TEE_CMD="${USR_BIN}/tee"
 TOUCH_CMD="${USR_BIN}/touch"
 YUM_CMD="${USR_BIN}/yum"
 HOSTNAME_CMD="${USR_BIN}/hostname"
+ZIP_CMD="${USR_BIN}/zip"
 
 ## List of sbin commands
 DMIDECODE_CMD="${USR_SBIN}/dmidecode"
@@ -293,11 +297,11 @@ fi
 if [ "${base_scan_name}" == "" ] ; then
     base_scan_dir="/tmp/fai-scan-${date_stamp}"
     ## Set the tar archive file based on the base_scan_dir
-    tar_archive_name="${base_scan_dir}.tgz"
+    archive_name="${base_scan_dir}"
 else
     base_scan_dir="/tmp/${base_scan_name}-${date_stamp}"
     ## Set the tar archive file based on the base_scan_dir
-    tar_archive_name="${base_scan_dir}-fai-scan.tgz"
+    archive_name="${base_scan_dir}-fai-scan"
 fi
 
 ## Make tmp dir for collection
@@ -378,26 +382,31 @@ ${ECHO_CMD} "Getting Huge page information" | ${TEE_CMD} -a ${summary_report_fil
 ${GREP_CMD} -r "hugepages=" /boot >> ${base_scan_dir}/hugepage-boot-info.txt
 ${GREP_CMD} HugePages_ /proc/meminfo >> ${base_scan_dir}/hugepage-boot-info.txt
 
-if [ -c /dev/cdc-wdm0 ] ; then
-  ${ECHO_CMD} "Collecting LTE/QMI Information" | ${TEE_CMD} -a ${summary_report_file}
-  ${ECHO_CMD} " obtaining ${QMICLI_CMD} information" | ${TEE_CMD} -a ${base_scan_dir}/qmicli-output.txt
-  for i in ${qmicli_cmd_list}
-  do
-    ${ECHO_CMD} " --${i}" | ${TEE_CMD} -a ${base_scan_dir}/qmicli-output.txt
-    ${QMICLI_CMD} -d /dev/cdc-wdm0 --${i} >> ${base_scan_dir}/qmicli-output.txt
-    ${ECHO_CMD} "------ END ${i}" >> ${base_scan_dir}/qmicli-output.txt
-  done
-fi
+for cdcwdm_name in cdc-wdm0 cdc-wdm1
+do
+  if [ -c /dev/${cdcwdm_name} ] ; then
+    ## Ok get the network interface name and extract the device driver for it
+    net_dev_name=`${QMICLI_CMD} -d /dev/${cdcwdm_name} --device-open-proxy --get-wwan-iface`
+    driver_name=`${CAT_CMD} /sys/class/net/${net_dev_name}/device/uevent | grep ^DRIVER | sed -e's/DRIVER=//'`
 
-if [ -c /dev/cdc-wdm1 ] ; then
-  ${ECHO_CMD} "Collecting 2nd LTE/QMI Information" | ${TEE_CMD} -a ${summary_report_file}
-  ${ECHO_CMD} " obtaining ${QMICLI_CMD} information" | ${TEE_CMD} -a ${base_scan_dir}/qmicli-output.txt
-  for i in ${qmicli_cmd_list}
-  do
-    ${ECHO_CMD} " --${i}" | ${TEE_CMD} -a ${base_scan_dir}/qmicli-output.txt
-    ${QMICLI_CMD} -d /dev/cdc-wdm1 --${i} >> ${base_scan_dir}/qmicli-output.txt
-  done
-fi
+    ${ECHO_CMD} "Collecting ${cdcwdm_name} LTE/QMI net-device ${net_dev_name} Information" | ${TEE_CMD} -a ${summary_report_file}
+    ${ECHO_CMD} " obtaining ${QMICLI_CMD} information for ${cdcwdm_name} net-device ${net_dev_name}" | ${TEE_CMD} -a ${base_scan_dir}/qmicli-output.txt
+    for i in ${qmicli_cmd_list}
+    do
+      ${ECHO_CMD} " --${i}" | ${TEE_CMD} -a ${base_scan_dir}/qmicli-output.txt
+      ${QMICLI_CMD} -d /dev/${cdcwdm_name} --${i} >> ${base_scan_dir}/qmicli-output.txt
+      ${ECHO_CMD} "------ END ${i}" >> ${base_scan_dir}/qmicli-output.txt
+    done
+
+    ## Check the driver setting
+    ${ECHO_CMD} "Wireless modem ${cdcwdm_name} interface ${net_dev_name} setting" | ${TEE_CMD} -a ${summary_report_file}
+    if [ "${driver_name}" == "qmi_wwan" ] ; then
+        ${ECHO_CMD} "Wireless modem ${cdcwdm_name} interface ${net_dev_name} setting ${driver_name} PASSED" | ${TEE_CMD} -a ${summary_report_file}
+    else
+        ${ECHO_CMD} "Wireless modem ${cdcwdm_name} interface ${net_dev_name} setting ${driver_name} FAILED" | ${TEE_CMD} -a ${summary_report_file}
+    fi
+  fi
+done
 
 ${ECHO_CMD} "running ${RPM_CMD} -qa ${SORT_CMD}" | ${TEE_CMD} -a ${summary_report_file}
 ${RPM_CMD} -qa | ${SORT_CMD} >> ${base_scan_dir}/rpm_-qa_sort-output.txt
@@ -578,8 +587,8 @@ for i in `lsblk | grep disk | awk '{print $1}'`; do
     fi
 done
 
-${ECHO_CMD} " Tarring up scanning archive as: ${tar_archive_name}"
-${TAR_CMD} cvfz ${tar_archive_name} ${base_scan_dir}
+${ECHO_CMD} " Compressing the scanning archive as: ${archive_name}.zip"
+${ZIP_CMD} -r ${archive_name} ${base_scan_dir}
 
 ${ECHO_CMD} "======= Printing Summary report ==========="
 ${CAT_CMD} ${base_scan_dir}/Summary-report.txt
@@ -589,5 +598,5 @@ ${RM_CMD} -rf ${base_scan_dir}
 
 ${ECHO_CMD} "****** FAI Scan complete ********"
 ${ECHO_CMD} ""
-${ECHO_CMD} " Please provide the archive file: ${tar_archive_name} to the SSR team for review"
+${ECHO_CMD} " Please provide the archive file: ${archive_name}.zip to the SSR team for review"
 
