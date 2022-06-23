@@ -2,8 +2,10 @@
 #
 #   Copyright ® Juniper Networks, Inc. 2021, 2022. All rights reserved.
 #
+# Version 1.10
+#  -- Removed redundant eeprom extraction
 # Version 1.9
-#  -- Add archive information for eeprom before pass/fail check 
+#  -- Add archive information for eeprom before pass/fail check
 #  -- add hostname of system by default to the archive name
 #  -- add option to place the archive in a different target directory
 #  -- exit if mkdir operation for archive staging location cannot be created
@@ -49,7 +51,7 @@
 # Version 1.0
 #  -- added collection of new 128T-ISO-release file and updated iso log files
 #  -- dump the process list
-#  -- added system information extraction from dmidecode to summary report 
+#  -- added system information extraction from dmidecode to summary report
 #  -- added switch to use explicit name for archive in place of date stamp
 #  -- added switches for dnf|yum, and journalctl output counts
 # Version 0.10
@@ -120,8 +122,8 @@
 #     Check if jnpr eeprom exists
 #     Check for JNPR eeprom and validate if possible
 #     run 128tok.sh if available
-#     
-#      
+#
+#
 #  Full mode (additional commands run beyond above, "full" option):
 #     rpm -qa -V – gets the list of rpms from the system and performs a
 #          verification on each. (This one will scan the complete database,
@@ -136,7 +138,7 @@
 ##
 #
 #  Risk of running this script on a production system:
-#    In Summary mode there are no risks. 
+#    In Summary mode there are no risks.
 #    In "full" mode, the risks are:
 #       1. If there is a disk failure scanning the rpms and database could
 #            trigger the OS running into the disk failure.
@@ -404,7 +406,7 @@ while [[ "$#" -gt 0 ]] ; do
                                shift;;
         -t|--target-dir) target_dir="${2}";
                         echo_info "Setting archive target location to: '${2}'";
-                        shift;;        
+                        shift;;
         -f|--force_run) force_scan_run=1;;
         -p|--print-level) print_level="${2}";
                     shift;;
@@ -530,7 +532,7 @@ echo_info "=== ${SMARTCTL_CMD} -d nvme information ==" ${base_scan_dir}/disk-sma
 ${SMARTCTL_CMD} --scan -d nvme >> ${base_scan_dir}/disk-smartctl.txt 2>&1
 
 for i in `${SMARTCTL_CMD} --scan -d sat | ${GREP_CMD} -v ^# | ${GAWK_CMD} '{print $1}'; ${SMARTCTL_CMD} --scan -d nvme | ${GREP_CMD} -v ^# | ${GAWK_CMD} '{print $1}'`
-do 
+do
     echo_info "====Getting --all drive ${i} information:" ${base_scan_dir}/disk-smartctl.txt
     ${SMARTCTL_CMD} --all ${i} >> ${base_scan_dir}/disk-smartctl.txt 2>&1
     echo_info "====Getting --xall drive ${i} information:" ${base_scan_dir}/disk-smartctl.txt
@@ -630,10 +632,10 @@ while [[ "${boot_scan_count}" -gt -1 ]] ; do
 done
 
 ## Non summary information here
-if [ "${run_mode}" == "full" ] ; then 
+if [ "${run_mode}" == "full" ] ; then
   echo_info "RUNNING IN FULL MODE" ${summary_report_file}
   echo_info "running ${RPM_CMD} -qa -V" ${summary_report_file}
-  for i in `${RPM_CMD} -qa | ${SORT_CMD}` 
+  for i in `${RPM_CMD} -qa | ${SORT_CMD}`
   do
     echo_info " --- ${i}" ${base_scan_dir}/rpm_-qa_-V-output.txt
     ${RPM_CMD} -V ${i} >> ${base_scan_dir}/rpm_-qa_-V-output.txt 2>&1
@@ -648,7 +650,7 @@ if [ "${run_mode}" == "full" ] ; then
   echo_info "Collecting dnf and yum history information" ${summary_report_file}
   echo_info "=== running ${DNF_CMD} history count ${dnf_yum_history_count}" ${base_scan_dir}/dnf_history_info-output.txt
   for i in `${DNF_CMD} history | ${GREP_CMD} -vE 'ID|\-\-\-\-|history' | awk '{print $1}' | head -${dnf_yum_history_count}`
-  do 
+  do
     echo_info " --- ${DNF_CMD} history info $i" ${base_scan_dir}/dnf_history_info-output.txt
     ${DNF_CMD} history info $i >>${base_scan_dir}/dnf_history_info-output.txt 2>&1
   done
@@ -702,10 +704,7 @@ if [ -x ${I2CDETECT_CMD} -a -x ${EEPROM_VALIDATE_CMD} ] ; then
 
         ## replicate the eeprom validation in the Summary status file
         ${GREP_CMD} -E "PASS|FAIL|WARN" ${base_scan_dir}/eeprom-detection.txt | ${GREP_CMD} -v "EEPROM validation" >> ${summary_status_file}
-        ## place the contents of eeprom into eeprom-content.txt
-        i2c_801_num="`${I2CDETECT_CMD} -l | ${GREP_CMD} -i i801 | ${GAWK_CMD} '{print $1;}' | ${TAIL_CMD} -c 2`"
-        ${I2CDUMP_CMD} -y ${i2c_801_num} 0x54 >> ${base_scan_dir}/eeprom-detection.txt 2>&1
-    else 
+    else
         echo_info "No eeprom detected" ${base_scan_dir}/eeprom-detection.txt
         echo_info "No eeprom detected" ${summary_report_file}
     fi
@@ -719,7 +718,7 @@ if [ -x ${I2CDETECT_CMD} -a -x ${EEPROM_VALIDATE_CMD} ] ; then
     ## register status of eeprom checks
     do_echo ${eeprom_status} "check_eeprom" "EEPROM validation see eeprom-detection.txt for additional information"
 else
-    echo_info "EEPROM validation tools missing, check not performed" ${base_scan_dir}/eeprom-detection.txt 
+    echo_info "EEPROM validation tools missing, check not performed" ${base_scan_dir}/eeprom-detection.txt
     echo_info "EEPROM validation tools missing, check not performed" ${summary_report_file}
 fi
 
@@ -773,7 +772,7 @@ fi
 ## This section is the new Summary output that will also be added to the Summary report file
 ### Disk check, must get at least one PASS for check to PASS, default to 0/fail
 disk_check_pass=0
-for i in `${LSBLK_CMD} | ${GREP_CMD} disk | ${GAWK_CMD} '{print $1}'`; do 
+for i in `${LSBLK_CMD} | ${GREP_CMD} disk | ${GAWK_CMD} '{print $1}'`; do
     ## Default the check to warning
     disk_check_status=${STATUS_WARN}
     disk_space=`${LSBLK_CMD} /dev/${i} | ${GREP_CMD} disk | ${GREP_CMD} "G" | ${GAWK_CMD} '{print $4}' | ${SED_CMD} -E -e 's/G|\..*$//g'`
