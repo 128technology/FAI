@@ -2,6 +2,10 @@
 #
 #   Copyright ® Juniper Networks, Inc. 2021, 2022. All rights reserved.
 #
+# Version 1.12
+#  -- Collect ECC memory support info from edac kernel driver
+# Version 1.11
+#  -- Allow CTRL-C to stop scanning process, then collect available files and cleanup
 # Version 1.10
 #  -- Removed redundant eeprom extraction
 # Version 1.9
@@ -150,6 +154,7 @@
 #            failing.
 ##
 
+trap 'cleanup_and_exit' INT
 
 ## Set linux command to specific locations
 # Base command variables
@@ -186,6 +191,7 @@ TOUCH_CMD="${USR_BIN}/touch"
 YUM_CMD="${USR_BIN}/yum"
 HOSTNAME_CMD="${USR_BIN}/hostname"
 ZIP_CMD="${USR_BIN}/zip"
+DMESG_CMD="${USR_BIN}/dmesg"
 
 ## List of sbin commands
 DMIDECODE_CMD="${USR_SBIN}/dmidecode"
@@ -320,6 +326,16 @@ function do_echo() {
 
     __sfunc="$2:"
     printf "%-${DO_ECHO_INDENT_COUNT}s ${__prestr}%s${__poststr}\n" "${__sfunc}" "${__smsg} ${3}" >> ${summary_status_file}
+}
+
+## Function to generate final report and cleanup
+function cleanup_and_exit() {
+    echo_info " Compressing the scanning archive as: ${archive_name}.zip"
+    ${ZIP_CMD} -r -qdgds 10m ${archive_name} ${base_scan_dir}
+
+    ## " removing archive directory: ${base_scan_dir} "
+    ${RM_CMD} -rf ${base_scan_dir}
+    exit ${STATUS_FAIL}
 }
 
 ## Set Local variables
@@ -736,6 +752,9 @@ ${CAT_CMD} ${base_scan_dir}/dpdk-devbind.txt >> ${summary_report_file}
 ${CAT_CMD} ${base_scan_dir}/disk-info-output.txt >> ${summary_report_file}
 echo_info "--- hostname from cmd ---" ${summary_report_file}
 ${HOSTNAME_CMD} >> ${summary_report_file}
+echo_info "--- ECC Support Info ---" ${summary_report_file}
+${DMESG_CMD} -t | ${GREP_CMD} -i edac >> ${summary_report_file}
+${GREP_CMD} -H "[0-9]" /sys/devices/system/edac/mc/mc*/csrow*/ch*_ce_count >> ${summary_report_file} 2>&1
 
 echo_info "-=-=-=- Boot information" ${summary_report_file}
 if [ -d /sys/firmware/efi ] ; then
