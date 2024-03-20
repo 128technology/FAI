@@ -2,6 +2,11 @@
 #
 #   Copyright ® Juniper Networks, Inc. 2021, 2022. All rights reserved.
 #
+# Versino 1.13
+#  -- Add ethtool and cmd options for extracting NIC information
+#  -- variablized dpdk-devbind.py
+#  -- put in checks for commands and files not accessible
+#  -- Added yum and dnf -y option to auto accept gpg keys added to repos
 # Version 1.12
 #  -- Collect ECC memory support info from edac kernel driver
 # Version 1.11
@@ -192,9 +197,11 @@ YUM_CMD="${USR_BIN}/yum"
 HOSTNAME_CMD="${USR_BIN}/hostname"
 ZIP_CMD="${USR_BIN}/zip"
 DMESG_CMD="${USR_BIN}/dmesg"
+DPDK_DEVBIND_CMD="${USR_BIN}/dpdk-devbind.py"
 
 ## List of sbin commands
 DMIDECODE_CMD="${USR_SBIN}/dmidecode"
+ETHTOOL_CMD="${USR_SBIN}/ethtool"
 FDISK_CMD="${USR_SBIN}/fdisk"
 GRUBBY_CMD="${USR_SBIN}/grubby"
 IP_CMD="${USR_SBIN}/ip"
@@ -366,6 +373,16 @@ boot_scan_line_count="50"
 ## target archive directory
 target_dir="/tmp"
 
+## Section for placing command options to be used during execution
+# Command list section for commands below
+ethtool_cmd_list=(" "
+"-i "
+"--module-info "
+"--show-priv-flags "
+"--show-eee "
+"--show-channels"
+)
+
 ## qmicli command list
 qmicli_cmd_list="dms-get-firmware-preference \
 dms-list-stored-images \
@@ -507,8 +524,12 @@ echo_info "running ip a and ip r" ${summary_report_file}
 ${IP_CMD} a > ${base_scan_dir}/ip_a-output.txt 2>&1
 ${IP_CMD} r > ${base_scan_dir}/ip_r-output.txt 2>&1
 
-echo_info "Collecting dpdk-devbind output" ${summary_report_file}
-dpdk-devbind.py --status dev >> ${base_scan_dir}/dpdk-devbind.txt
+echo_info "Collecting ${DPDK_DEVBIND_CMD} output" ${summary_report_file}
+if [[ -x ${DPDK_DEVBIND_CMD} ]] ; then
+    ${DPDK_DEVBIND_CMD} --status dev >> ${base_scan_dir}/dpdk-devbind.txt
+else
+    echo_info "${DPDK_DEVBIND_CMD} does not exist on this system" ${base_scan_dir}/dpdk-devbind.txt
+fi
 
 echo_info "Collect Misc system information" ${summary_report_file}
 ${LSCPU_CMD} > ${base_scan_dir}/lscpu-free-info.txt 2>&1
@@ -531,9 +552,20 @@ ${CP_CMD} -p /etc/sysconfig/network-scripts/ifcfg-* ${base_scan_dir}/
 ${CP_CMD} -p /etc/resolv.conf ${base_scan_dir}/
 ${FIND_CMD} /etc/sysconfig/network-scripts/ -name route-\* -exec ${CP_CMD} {} ${base_scan_dir}/ \;
 
-echo_info "collecting SSR specific files" ${summary_report_file}
-${CP_CMD} -p /etc/128technology/global.init ${base_scan_dir}/
-${CP_CMD} -p /etc/128technology/local.init ${base_scan_dir}/
+if [[ -f /etc/128technology/global.init ]] ; then
+    echo_info "collecting SSR global.init " ${summary_report_file}
+    ${CP_CMD} -p /etc/128technology/global.init ${base_scan_dir}/
+else
+    echo_info "SSR global.init not found " ${summary_report_file}
+fi
+
+if [[ -f /etc/128technology/local.init ]] ; then
+    echo_info "collecting SSR local.init " ${summary_report_file}
+    ${CP_CMD} -p /etc/128technology/local.init ${base_scan_dir}/
+else
+    echo_info "SSR local.init not found " ${summary_report_file}
+fi
+
 
 echo_info "collecting hostname information" ${summary_report_file}
 ${CP_CMD} -p /etc/hostname ${base_scan_dir}/
@@ -541,20 +573,23 @@ ${CP_CMD} -p /etc/hostname ${base_scan_dir}/
 echo_info "collecting last information" ${summary_report_file}
 ${LAST_CMD} >> ${base_scan_dir}/last-cmd.txt
 
-echo_info "Getting ${SMARTCTL_CMD} information" ${summary_report_file}
-echo_info "=== ${SMARTCTL_CMD} -d sat information ==" ${base_scan_dir}/disk-smartctl.txt
-${SMARTCTL_CMD} --scan -d sat >> ${base_scan_dir}/disk-smartctl.txt 2>&1
-echo_info "=== ${SMARTCTL_CMD} -d nvme information ==" ${base_scan_dir}/disk-smartctl.txt
-${SMARTCTL_CMD} --scan -d nvme >> ${base_scan_dir}/disk-smartctl.txt 2>&1
+if [[ -x ${SMARTCTL_CMD} ]] ; then
+    echo_info "Getting ${SMARTCTL_CMD} information" ${summary_report_file}
+    echo_info "=== ${SMARTCTL_CMD} -d sat information ==" ${base_scan_dir}/disk-smartctl.txt
+    ${SMARTCTL_CMD} --scan -d sat >> ${base_scan_dir}/disk-smartctl.txt 2>&1
+    echo_info "=== ${SMARTCTL_CMD} -d nvme information ==" ${base_scan_dir}/disk-smartctl.txt
+    ${SMARTCTL_CMD} --scan -d nvme >> ${base_scan_dir}/disk-smartctl.txt 2>&1
 
-for i in `${SMARTCTL_CMD} --scan -d sat | ${GREP_CMD} -v ^# | ${GAWK_CMD} '{print $1}'; ${SMARTCTL_CMD} --scan -d nvme | ${GREP_CMD} -v ^# | ${GAWK_CMD} '{print $1}'`
-do
-    echo_info "====Getting --all drive ${i} information:" ${base_scan_dir}/disk-smartctl.txt
-    ${SMARTCTL_CMD} --all ${i} >> ${base_scan_dir}/disk-smartctl.txt 2>&1
-    echo_info "====Getting --xall drive ${i} information:" ${base_scan_dir}/disk-smartctl.txt
-    ${SMARTCTL_CMD} --xall ${i} >> ${base_scan_dir}/disk-smartctl.txt 2>&1
-done
-
+    for i in `${SMARTCTL_CMD} --scan -d sat | ${GREP_CMD} -v ^# | ${GAWK_CMD} '{print $1}'; ${SMARTCTL_CMD} --scan -d nvme | ${GREP_CMD} -v ^# | ${GAWK_CMD} '{print $1}'`
+    do
+        echo_info "====Getting --all drive ${i} information:" ${base_scan_dir}/disk-smartctl.txt
+        ${SMARTCTL_CMD} --all ${i} >> ${base_scan_dir}/disk-smartctl.txt 2>&1
+        echo_info "====Getting --xall drive ${i} information:" ${base_scan_dir}/disk-smartctl.txt
+        ${SMARTCTL_CMD} --xall ${i} >> ${base_scan_dir}/disk-smartctl.txt 2>&1
+    done
+else
+    echo_info "command ${SMARTCTL_CMD} missing from system not getting information" ${summary_report_file}
+fi
 echo_info "Getting Huge page information" ${summary_report_file}
 ${GREP_CMD} -r "hugepages=" /boot >> ${base_scan_dir}/hugepage-boot-info.txt
 ${GREP_CMD} HugePages_ /proc/meminfo >> ${base_scan_dir}/hugepage-boot-info.txt
@@ -604,8 +639,12 @@ done
 echo_info "running ${RPM_CMD} -qa ${SORT_CMD}" ${summary_report_file}
 ${RPM_CMD} -qa | ${SORT_CMD} >> ${base_scan_dir}/rpm_-qa_sort-output.txt 2>&1
 
-echo_info "listing ${repo_saved_location} location" ${summary_report_file}
-${LS_CMD} -v ${repo_saved_location} >> ${base_scan_dir}/repo_saved_location.txt
+if [[ -d ${repo_saved_location} ]] ; then
+    echo_info "listing ${repo_saved_location} location" ${summary_report_file}
+    ${LS_CMD} -v ${repo_saved_location} >> ${base_scan_dir}/repo_saved_location.txt
+else
+    echo_info "repo location ${repo_saved_location} does not exist, not collecting" ${summary_report_file}
+fi
 
 echo_info "Getting core and kernel crash history" ${summary_report_file}
 echo_info "=== core listing" ${base_scan_dir}/coredumpctl-list.txt
@@ -664,21 +703,41 @@ if [ "${run_mode}" == "full" ] ; then
   ${JOURNALCTL_CMD} -a --lines=${journalctl_line_count} >> ${base_scan_dir}/journalctl-output.txt 2>&1
 
   echo_info "Collecting dnf and yum history information" ${summary_report_file}
-  echo_info "=== running ${DNF_CMD} history count ${dnf_yum_history_count}" ${base_scan_dir}/dnf_history_info-output.txt
-  for i in `${DNF_CMD} history | ${GREP_CMD} -vE 'ID|\-\-\-\-|history' | awk '{print $1}' | head -${dnf_yum_history_count}`
+  echo_info "=== running ${DNF_CMD} -y history count ${dnf_yum_history_count}" ${base_scan_dir}/dnf_history_info-output.txt
+  for i in `${DNF_CMD} -y history | ${GREP_CMD} -vE 'ID|\-\-\-\-|history' | awk '{print $1}' | head -${dnf_yum_history_count}`
   do
-    echo_info " --- ${DNF_CMD} history info $i" ${base_scan_dir}/dnf_history_info-output.txt
-    ${DNF_CMD} history info $i >>${base_scan_dir}/dnf_history_info-output.txt 2>&1
+    echo_info " --- ${DNF_CMD} -y history info $i" ${base_scan_dir}/dnf_history_info-output.txt
+    ${DNF_CMD} -y history info $i >>${base_scan_dir}/dnf_history_info-output.txt 2>&1
   done
 
-  echo_info "=== running ${YUM_CMD} history count ${dnf_yum_history_count}" ${base_scan_dir}/yum_history_info-output.txt
-  for i in `${YUM_CMD} history list all | ${GREP_CMD} -vE 'ID|\-\-\-\-|history|Loaded' | awk '{print $1}' | head -${dnf_yum_history_count}`
+  echo_info "=== running ${YUM_CMD} -y history count ${dnf_yum_history_count}" ${base_scan_dir}/yum_history_info-output.txt
+  for i in `${YUM_CMD} -y history list all | ${GREP_CMD} -vE 'ID|\-\-\-\-|history|Loaded' | awk '{print $1}' | head -${dnf_yum_history_count}`
   do
-    echo_info " --- ${YUM_CMD} history info $i" ${base_scan_dir}/yum_history_info-output.txt
-    ${YUM_CMD} history info $i >> ${base_scan_dir}/yum_history_info-output.txt 2>&1
+    echo_info " --- ${YUM_CMD} -y history info $i" ${base_scan_dir}/yum_history_info-output.txt
+    ${YUM_CMD} -y history info $i >> ${base_scan_dir}/yum_history_info-output.txt 2>&1
   done
 
 fi
+
+## Collection NIC ethtool information
+echo_info "Collecting ethtool NIC information" ${summary_report_file}
+
+## Get registered/linux visible 
+linux_nic_names="`ip a | grep mtu | awk '{print $2}' | grep -v lo | grep -v tun | sed -e 's/://' | sort`"
+
+## Run through each NIC found and place in the expected log file
+echo_info "++++  Ethtool interfaces found ${linux_nic_names} ++++" ${base_scan_dir}/ethtool_information-output.txt
+
+for i in ${linux_nic_names}
+do
+    echo_info "=== Starting ethtool run on ${i} ==" ${base_scan_dir}/ethtool_information-output.txt
+    for j in "${ethtool_cmd_list[@]}"
+    do
+        echo_info "---- Running ${j} on ${i}" ${base_scan_dir}/ethtool_information-output.txt 
+        ${ETHTOOL_CMD} ${j} ${i} >> ${base_scan_dir}/ethtool_information-output.txt 2>&1
+    done
+    echo_info "=== Ending ethtool run on ${i} ==" ${base_scan_dir}/ethtool_information-output.txt
+done
 
 ## Collect install, dnf and yum logs
 echo_info "Collecting install, dnf and yum logs" ${summary_report_file}
